@@ -118,6 +118,20 @@
             <hr />
 
             <div class="flex-container flexFlowColumn">
+                <div><strong>多备选回复兼容</strong></div>
+                <label class="checkbox_label" for="mvu_auto_update_on_swipe">
+                    <input
+                        id="mvu_auto_update_on_swipe"
+                        v-model="store.settings.多备选回复兼容.切换回复时自动更新变量"
+                        type="checkbox"
+                    />
+                    <span>切换回复时自动更新变量</span>
+                </label>
+            </div>
+
+            <hr />
+
+            <div class="flex-container flexFlowColumn">
                 <div><strong>修复按钮</strong></div>
                 <div class="flex-container flex">
                     <div

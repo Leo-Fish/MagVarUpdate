@@ -31,6 +31,11 @@ let duringExtraCall = false;
  */
 let isExtraModelSupported = false;
 
+/**
+ * 记录上次处理的swipe_id，用于检测swipe变化
+ */
+let lastProcessedSwipeId: number | null = null;
+
 async function handlePromptFilter(lores: {
     globalLore: Record<string, any>[];
     characterLore: Record<string, any>[];
@@ -175,21 +180,21 @@ async function onMessageReceived(message_id: number) {
             const current_result = await generateFn(
                 settings.额外模型解析配置.模型来源 === '与插头相同'
                     ? {
-                          user_input: `遵循后续的 <must> 指令`,
-                          injects: promptInjects,
-                          max_chat_history: 2,
-                          should_stream: settings.额外模型解析配置.使用函数调用,
-                      }
+                        user_input: `遵循后续的 <must> 指令`,
+                        injects: promptInjects,
+                        max_chat_history: 2,
+                        should_stream: settings.额外模型解析配置.使用函数调用,
+                    }
                     : {
-                          user_input: `遵循后续的 <must> 指令`,
-                          custom_api: {
-                              apiurl: settings.额外模型解析配置.api地址,
-                              key: settings.额外模型解析配置.密钥,
-                              model: settings.额外模型解析配置.模型名称,
-                          },
-                          injects: promptInjects,
-                          should_stream: settings.额外模型解析配置.使用函数调用,
-                      }
+                        user_input: `遵循后续的 <must> 指令`,
+                        custom_api: {
+                            apiurl: settings.额外模型解析配置.api地址,
+                            key: settings.额外模型解析配置.密钥,
+                            model: settings.额外模型解析配置.模型名称,
+                        },
+                        injects: promptInjects,
+                        should_stream: settings.额外模型解析配置.使用函数调用,
+                    }
             );
             if (collected_tool_calls !== undefined) {
                 const content = _.get(collected_tool_calls as ToolCallBatches, '[0]');
@@ -276,6 +281,45 @@ async function onMessageReceived(message_id: number) {
     await handleVariablesInMessage(message_id);
 }
 
+/**
+ * 处理MESSAGE_SWIPED事件
+ * 当用户切换回复时自动重新处理变量
+ */
+async function onMessageSwiped() {
+    const settings = useSettingsStore().settings;
+
+    // 检查是否启用了多备选回复兼容功能
+    if (!settings.多备选回复兼容.切换回复时自动更新变量) {
+        return;
+    }
+
+    try {
+        console.log('检测到MESSAGE_SWIPED，重新处理变量');
+
+        // 直接调用按钮的重新处理变量功能
+        const last_msg = getLastMessageId();
+        if (last_msg < 1) return;
+        if (SillyTavern.chat.length === 0) return;
+
+        await updateVariablesWith(
+            variables => {
+                _.unset(variables, `stat_data`);
+                _.unset(variables, `delta_data`);
+                _.unset(variables, `display_data`);
+                _.unset(variables, `schema`);
+                return variables;
+            },
+            { type: 'message', message_id: last_msg }
+        );
+
+        await handleVariablesInMessage(getLastMessageId());
+
+        toastr.info('已自动重新处理变量', '[MVU]切换回复检测', { timeOut: 2000 });
+    } catch (error) {
+        console.error('处理MESSAGE_SWIPED事件时发生错误:', error);
+    }
+}
+
 $(async () => {
     if (compare(await getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
@@ -295,6 +339,7 @@ $(async () => {
     eventOn(tavern_events.GENERATION_STARTED, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
+    eventOn(tavern_events.MESSAGE_SWIPED, onMessageSwiped);
 
     // 3.6.5 版本以上酒馆助手的 `tavern_events` 才存在这个字段, 因此直接用字符串
     eventOn('worldinfo_entries_loaded', handlePromptFilter);
